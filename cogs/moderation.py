@@ -1,12 +1,14 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 import asyncio
 from datetime import datetime, timedelta
+from utils.database import Database
+from utils.checks import has_permission, check_permission
 
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        from utils.database import Database
         self.db = Database()
 
     async def get_log_channel(self, guild_id):
@@ -29,9 +31,14 @@ class Moderation(commands.Cog):
             except:
                 pass
 
-    @commands.command(name='mute')
-    @commands.has_permissions(manage_roles=True)
-    async def mute(self, ctx, member: discord.Member, time: str, *, reason="Не указана"):
+    @commands.hybrid_command(name='mute', description='Выдать мут пользователю')
+    @app_commands.describe(
+        member='Пользователь, которому выдать мут',
+        time='Время мута (10s, 5m, 1h, 7d)',
+        reason='Причина мута (необязательно)'
+    )
+    @has_permission('moderator', 'admin', 'high_admin', 'owner')
+    async def mute(self, ctx, member: discord.Member, time: str, *, reason: str = "Не указана"):
         if member == ctx.author:
             embed = discord.Embed(
                 title="❌ Ошибка",
@@ -151,9 +158,13 @@ class Moderation(commands.Cog):
             )
             await ctx.send(embed=embed)
 
-    @commands.command(name='unmute')
-    @commands.has_permissions(manage_roles=True)
-    async def unmute(self, ctx, member: discord.Member, *, reason="Не указана"):
+    @commands.hybrid_command(name='unmute', description='Снять мут с пользователя')
+    @app_commands.describe(
+        member='Пользователь, с которого снять мут',
+        reason='Причина снятия мута (необязательно)'
+    )
+    @has_permission('moderator', 'admin', 'high_admin', 'owner')
+    async def unmute(self, ctx, member: discord.Member, *, reason: str = "Не указана"):
         mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
         if mute_role and mute_role in member.roles:
             try:
@@ -208,9 +219,13 @@ class Moderation(commands.Cog):
             )
             await ctx.send(embed=embed)
 
-    @commands.command(name='warn')
-    @commands.has_permissions(manage_roles=True)
-    async def warn(self, ctx, member: discord.Member, *, reason="Не указана"):
+    @commands.hybrid_command(name='warn', description='Выдать предупреждение пользователю')
+    @app_commands.describe(
+        member='Пользователь, которому выдать предупреждение',
+        reason='Причина предупреждения (необязательно)'
+    )
+    @has_permission('moderator', 'admin', 'high_admin', 'owner')
+    async def warn(self, ctx, member: discord.Member, *, reason: str = "Не указана"):
         if member == ctx.author:
             embed = discord.Embed(
                 title="❌ Ошибка",
@@ -260,9 +275,13 @@ class Moderation(commands.Cog):
         except:
             pass
 
-    @commands.command(name='kick')
-    @commands.has_permissions(kick_members=True)
-    async def kick(self, ctx, member: discord.Member, *, reason="Не указана"):
+    @commands.hybrid_command(name='kick', description='Кикнуть пользователя с сервера')
+    @app_commands.describe(
+        member='Пользователь, которого кикнуть',
+        reason='Причина кика (необязательно)'
+    )
+    @has_permission('admin', 'high_admin', 'owner')
+    async def kick(self, ctx, member: discord.Member, *, reason: str = "Не указана"):
         if member == ctx.author:
             embed = discord.Embed(
                 title="❌ Ошибка",
@@ -311,9 +330,13 @@ class Moderation(commands.Cog):
             )
             await ctx.send(embed=embed)
 
-    @commands.command(name='ban')
-    @commands.has_permissions(ban_members=True)
-    async def ban(self, ctx, member: discord.Member, *, reason="Не указана"):
+    @commands.hybrid_command(name='ban', description='Забанить пользователя на сервере')
+    @app_commands.describe(
+        member='Пользователь, которого забанить',
+        reason='Причина бана (необязательно)'
+    )
+    @has_permission('high_admin', 'owner')
+    async def ban(self, ctx, member: discord.Member, *, reason: str = "Не указана"):
         if member == ctx.author:
             embed = discord.Embed(
                 title="❌ Ошибка",
@@ -362,8 +385,9 @@ class Moderation(commands.Cog):
             )
             await ctx.send(embed=embed)
 
-    @commands.command(name='clear')
-    @commands.has_permissions(manage_messages=True)
+    @commands.hybrid_command(name='clear', description='Очистить сообщения в канале')
+    @app_commands.describe(amount='Количество сообщений для удаления')
+    @has_permission('moderator', 'admin', 'high_admin', 'owner')
     async def clear(self, ctx, amount: int):
         if amount > 100:
             embed = discord.Embed(

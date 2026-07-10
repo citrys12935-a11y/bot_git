@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 from utils.database import Database
 import asyncio
@@ -71,12 +72,16 @@ class Tickets(commands.Cog):
         
         return category
 
-    @commands.group(name='ticket', invoke_without_command=True)
+    @commands.hybrid_group(name='ticket', description='Система тикетов')
     async def ticket(self, ctx):
-        """Система тикетов"""
-        await ctx.send_help(ctx.command)
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
 
-    @ticket.command(name='create')
+    @ticket.command(name='create', description='Создать тикет')
+    @app_commands.describe(
+        ticket_type='Тип тикета (помощь, жалоба)',
+        description='Описание проблемы'
+    )
     async def create_ticket(self, ctx, ticket_type: str, *, description: str):
         """Создать тикет
         
@@ -110,7 +115,7 @@ class Tickets(commands.Cog):
         if not support_role_id:
             embed = discord.Embed(
                 title="❌ Система тикетов не настроена!",
-                description=f"Администратор должен настроить роль для тикетов типа '{ticket_type}' с помощью команды:\n`!settings ticket group {ticket_type} @роль`",
+                description=f"Администратор должен настроить роль для тикетов типа '{ticket_type}' с помощью команды:\n`/settings ticket group {ticket_type} @роль`",
                 color=0xff0000
             )
             await ctx.send(embed=embed)
@@ -179,7 +184,7 @@ class Tickets(commands.Cog):
         )
         
         embed.add_field(name="📝 Описание проблемы", value=description, inline=False)
-        embed.add_field(name="⚙️ Команды", value="`!ticket close` - закрыть тикет\n`!ticket add @user` - добавить пользователя\n`!ticket remove @user` - удалить пользователя", inline=False)
+        embed.add_field(name="⚙️ Команды", value="`/ticket close` - закрыть тикет\n`/ticket add @user` - добавить пользователя\n`/ticket remove @user` - удалить пользователя", inline=False)
         embed.add_field(name="💡 Подсказка", value="Для быстрого закрытия тикета используйте кнопку ниже ⬇️", inline=False)
         
         # Создаем кнопку для закрытия тикета
@@ -239,7 +244,7 @@ class Tickets(commands.Cog):
         log_embed.add_field(name="📝 Описание", value=description, inline=False)
         await self.send_ticket_log(ctx.guild, log_embed)
 
-    @ticket.command(name='close')
+    @ticket.command(name='close', description='Закрыть тикет')
     async def close_ticket(self, ctx):
         """Закрыть тикет"""
         # Проверяем что команда вызвана в канале тикета
@@ -312,7 +317,8 @@ class Tickets(commands.Cog):
         
         await self.send_ticket_log(ctx.guild, log_embed)
 
-    @ticket.command(name='add')
+    @ticket.command(name='add', description='Добавить пользователя в тикет')
+    @app_commands.describe(member='Пользователь, которого добавить в тикет')
     async def add_user(self, ctx, member: discord.Member):
         """Добавить пользователя в тикет"""
         ticket = self.db.get_ticket(ctx.channel.id)
@@ -349,7 +355,8 @@ class Tickets(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @ticket.command(name='remove')
+    @ticket.command(name='remove', description='Удалить пользователя из тикета')
+    @app_commands.describe(member='Пользователь, которого удалить из тикета')
     async def remove_user(self, ctx, member: discord.Member):
         """Удалить пользователя из тикета"""
         ticket = self.db.get_ticket(ctx.channel.id)
@@ -395,7 +402,7 @@ class Tickets(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @ticket.command(name='list')
+    @ticket.command(name='list', description='Список активных тикетов (админ)')
     @commands.has_permissions(administrator=True)
     async def list_tickets(self, ctx):
         """Список активных тикетов (админ)"""
@@ -431,7 +438,7 @@ class Tickets(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @ticket.command(name='cleanup')
+    @ticket.command(name='cleanup', description='Очистка несуществующих тикетов из базы данных (админ)')
     @commands.has_permissions(administrator=True)
     async def cleanup_tickets(self, ctx):
         """Очистка несуществующих тикетов из базы данных (админ)"""

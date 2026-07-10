@@ -1,34 +1,19 @@
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 import asyncio
+from utils.database import Database
+from utils.checks import has_permission, check_permission
 
 class Shop(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        from utils.database import Database
         self.db = Database()
         self.check_expired_items.start()
 
     def cog_unload(self):
         self.check_expired_items.cancel()
-
-    async def check_permissions(self, ctx):
-        cursor = self.db.conn.cursor()
-        
-        admin_roles = []
-        for group in ['admin', 'high_admin', 'owner']:
-            cursor.execute('SELECT role_id FROM role_assignments WHERE guild_id = ? AND role_group = ?', (ctx.guild.id, group))
-            roles = cursor.fetchall()
-            admin_roles.extend([role[0] for role in roles])
-        
-        user_roles = [role.id for role in ctx.author.roles]
-        has_permission = any(role_id in user_roles for role_id in admin_roles)
-        
-        if not has_permission:
-            has_permission = ctx.author.guild_permissions.manage_guild
-        
-        return has_permission
 
     async def get_log_channel(self, guild_id):
         settings = self.db.get_server_settings(guild_id)
@@ -91,7 +76,8 @@ class Shop(commands.Cog):
         except Exception as e:
             print(f"❌ Ошибка проверки просроченных предметов: {e}")
 
-    @commands.command(name='shop')
+    @commands.hybrid_command(name='shop', description='Посмотреть магазин')
+    @app_commands.describe(page='Номер страницы (необязательно)')
     async def shop(self, ctx, page: int = 1):
         items = self.db.get_shop_items(ctx.guild.id)
         
@@ -149,7 +135,8 @@ class Shop(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @commands.command(name='buy')
+    @commands.hybrid_command(name='buy', description='Купить предмет из магазина')
+    @app_commands.describe(item_id='ID предмета для покупки')
     async def buy(self, ctx, item_id: int):
         items = self.db.get_shop_items(ctx.guild.id)
         
@@ -206,7 +193,8 @@ class Shop(commands.Cog):
             )
             await ctx.send(embed=embed)
 
-    @commands.command(name='inventory', aliases=['inv'])
+    @commands.hybrid_command(name='inventory', aliases=['inv'], description='Посмотреть инвентарь')
+    @app_commands.describe(member='Пользователь, чей инвентарь посмотреть (необязательно)')
     async def inventory(self, ctx, member: discord.Member = None):
         member = member or ctx.author
         inventory = self.db.get_user_inventory(member.id, ctx.guild.id)
@@ -252,17 +240,16 @@ class Shop(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @commands.command(name='additem')
+    @commands.hybrid_command(name='additem', description='Добавить предмет в магазин (админ)')
+    @app_commands.describe(
+        name='Название предмета',
+        price='Цена предмета',
+        item_type='Тип предмета (role, cosmetic, boost, other)',
+        max_purchases='Лимит покупок (-1 для безлимита)',
+        description='Описание предмета'
+    )
+    @has_permission('admin', 'high_admin', 'owner')
     async def add_shop_item(self, ctx, name: str, price: int, item_type: str, max_purchases: int = -1, *, description: str):
-        if not await self.check_permissions(ctx):
-            embed = discord.Embed(
-                title="❌ Ошибка",
-                description="У вас недостаточно прав для управления магазином!",
-                color=0xff0000
-            )
-            await ctx.send(embed=embed)
-            return
-        
         valid_types = ['role', 'cosmetic', 'boost', 'other']
         if item_type.lower() not in valid_types:
             await ctx.send(f"❌ Неверный тип предмета! Доступные: {', '.join(valid_types)}")
@@ -302,19 +289,12 @@ class Shop(commands.Cog):
         log_embed.add_field(name="ID", value=item_id, inline=True)
         await self.send_shop_log(ctx.guild, log_embed)
 
-    @commands.command(name='addroleitem')
-    async def add_role_item(self, ctx, *, args: str = None):
-        if not await self.check_permissions(ctx):
-            embed = discord.Embed(
-                title="❌ Ошибка",
-                description="У вас недостаточно прав для управления магазином!",
-                color=0xff0000
-            )
-            await ctx.send(embed=embed)
-            return
-        
+    @commands.hybrid_command(name='addroleitem', description='Добавить роль в магазин (админ)')
+    @app_commands.describe(args='Формат: "Название предмета" цена @роль [время] [лимит] описание')
+    @has_permission('admin', 'high_admin', 'owner')
+    async def add_role_item(self, ctx, *, args: str):
         if not args:
-            await ctx.send("❌ Использование: `!addroleitem \"Название предмета\" цена @роль [время] [лимит_покупок] описание`")
+            await ctx.send("❌ Использование: `/addroleitem \"Название предмета\" цена @роль [время] [лимит_покупок] описание`")
             return
         
         # Парсим аргументы вручную
@@ -470,17 +450,10 @@ class Shop(commands.Cog):
         log_embed.add_field(name="ID", value=item_id, inline=True)
         await self.send_shop_log(ctx.guild, log_embed)
 
-    @commands.command(name='deleteitem')
+    @commands.hybrid_command(name='deleteitem', description='Удалить предмет из магазина (админ)')
+    @app_commands.describe(item_id='ID предмета для удаления')
+    @has_permission('admin', 'high_admin', 'owner')
     async def delete_shop_item(self, ctx, item_id: int):
-        if not await self.check_permissions(ctx):
-            embed = discord.Embed(
-                title="❌ Ошибка",
-                description="У вас недостаточно прав для управления магазином!",
-                color=0xff0000
-            )
-            await ctx.send(embed=embed)
-            return
-        
         item = self.db.get_shop_item(item_id)
         if not item:
             await ctx.send("❌ Предмет с таким ID не найден!")
@@ -505,17 +478,10 @@ class Shop(commands.Cog):
         log_embed.add_field(name="ID", value=item_id, inline=True)
         await self.send_shop_log(ctx.guild, log_embed)
 
-    @commands.command(name='clearinventory')
+    @commands.hybrid_command(name='clearinventory', description='Очистить инвентарь пользователя (админ)')
+    @app_commands.describe(member='Пользователь, чей инвентарь очистить')
+    @has_permission('admin', 'high_admin', 'owner')
     async def clear_inventory(self, ctx, member: discord.Member):
-        if not await self.check_permissions(ctx):
-            embed = discord.Embed(
-                title="❌ Ошибка",
-                description="У вас недостаточно прав для этой команды!",
-                color=0xff0000
-            )
-            await ctx.send(embed=embed)
-            return
-        
         inventory = self.db.get_user_inventory(member.id, ctx.guild.id)
         for item in inventory:
             if item[7] == 'role' and item[8]:
@@ -545,7 +511,8 @@ class Shop(commands.Cog):
         log_embed.add_field(name="Пользователь", value=member.mention, inline=True)
         await self.send_shop_log(ctx.guild, log_embed)
 
-    @commands.command(name='iteminfo')
+    @commands.hybrid_command(name='iteminfo', description='Информация о предмете из магазина')
+    @app_commands.describe(item_id='ID предмета')
     async def item_info(self, ctx, item_id: int):
         item = self.db.get_shop_item(item_id)
         
@@ -581,14 +548,20 @@ class Shop(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @commands.group(name='market', invoke_without_command=True)
-    async def market(self, ctx, page: int = 1):
+    @commands.hybrid_group(name='market', description='Торговая площадка')
+    async def market(self, ctx):
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    @market.command(name='list', description='Посмотреть торговую площадку')
+    @app_commands.describe(page='Номер страницы (необязательно)')
+    async def market_list(self, ctx, page: int = 1):
         listings = self.db.get_market_listings(ctx.guild.id)
         
         if not listings:
             embed = discord.Embed(
                 title="🏪 Торговая площадка",
-                description="На площадке пока нет предложений!\nИспользуйте `!market sell <ID_предмета> <цена>` чтобы выставить предмет",
+                description="На площадке пока нет предложений!\nИспользуйте `/market sell` чтобы выставить предмет",
                 color=0x3498db
             )
             await ctx.send(embed=embed)
@@ -604,7 +577,7 @@ class Shop(commands.Cog):
         
         embed = discord.Embed(
             title=f"🏪 Торговая площадка (Страница {page}/{total_pages})",
-            description=f"Используйте `{ctx.prefix}market buy <ID>` для покупки\n`{ctx.prefix}market <страница>` для навигации",
+            description=f"Используйте `/market buy <ID>` для покупки\n`/market list <страница>` для навигации",
             color=0x3498db
         )
         
@@ -628,7 +601,11 @@ class Shop(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @market.command(name='sell')
+    @market.command(name='sell', description='Выставить предмет на продажу')
+    @app_commands.describe(
+        item_id='ID предмета из вашего инвентаря',
+        price='Цена продажи'
+    )
     async def market_sell(self, ctx, item_id: int, price: int):
         inventory = self.db.get_user_inventory(ctx.author.id, ctx.guild.id)
         
@@ -670,7 +647,8 @@ class Shop(commands.Cog):
         log_embed.add_field(name="ID предложения", value=listing_id, inline=True)
         await self.send_shop_log(ctx.guild, log_embed)
 
-    @market.command(name='buy')
+    @market.command(name='buy', description='Купить предмет с торговой площадки')
+    @app_commands.describe(listing_id='ID предложения для покупки')
     async def market_buy(self, ctx, listing_id: int):
         success, message = self.db.purchase_market_item(ctx.author.id, ctx.guild.id, listing_id)
         
@@ -709,7 +687,7 @@ class Shop(commands.Cog):
             )
             await ctx.send(embed=embed)
 
-    @market.command(name='my')
+    @market.command(name='my', description='Мои предложения на торговой площадке')
     async def market_my(self, ctx):
         listings = self.db.get_user_market_listings(ctx.author.id, ctx.guild.id)
         
@@ -744,7 +722,8 @@ class Shop(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @market.command(name='remove')
+    @market.command(name='remove', description='Убрать предложение с торговой площадки')
+    @app_commands.describe(listing_id='ID предложения для удаления')
     async def market_remove(self, ctx, listing_id: int):
         listing = self.db.get_market_listing(listing_id)
         
@@ -752,7 +731,10 @@ class Shop(commands.Cog):
             await ctx.send("❌ Предложение не найдено!")
             return
         
-        if listing[1] != ctx.author.id and not await self.check_permissions(ctx):
+        # Проверяем права пользователя
+        user_has_permission = check_permission(ctx.author, ctx.guild, ['admin', 'high_admin', 'owner'])
+        
+        if listing[1] != ctx.author.id and not user_has_permission:
             await ctx.send("❌ Вы можете убирать только свои предложения!")
             return
         
@@ -773,7 +755,8 @@ class Shop(commands.Cog):
         log_embed.add_field(name="ID предложения", value=listing_id, inline=True)
         await self.send_shop_log(ctx.guild, log_embed)
 
-    @commands.command(name='transactions', aliases=['trans'])
+    @commands.hybrid_command(name='transactions', aliases=['trans'], description='История транзакций')
+    @app_commands.describe(limit='Количество транзакций для показа (по умолчанию 10)')
     async def transactions(self, ctx, limit: int = 10):
         transactions = self.db.get_user_transactions(ctx.author.id, ctx.guild.id, limit)
         

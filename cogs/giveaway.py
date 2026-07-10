@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 import asyncio
@@ -136,7 +137,12 @@ class Giveaway(commands.Cog):
         except Exception as e:
             print(f"❌ Ошибка завершения розыгрыша: {e}")
 
-    @commands.command(name='giveaway', aliases=['gstart'])
+    @commands.hybrid_command(name='giveaway', aliases=['gstart'], description='Запустить розыгрыш')
+    @app_commands.describe(
+        duration="Длительность розыгрыша (10s, 5m, 1h, 7d)",
+        winners="Количество победителей",
+        prize="Приз розыгрыша"
+    )
     async def giveaway_start(self, ctx, duration: str, winners: int, *, prize: str):
         """Запустить розыгрыш"""
         # Проверка прав
@@ -209,7 +215,10 @@ class Giveaway(commands.Cog):
         
         await ctx.send(f"✅ Розыгрыш запущен! Он завершится {time_display}.")
 
-    @commands.command(name='greroll')
+    @commands.hybrid_command(name='greroll', description='Перевыбрать победителей розыгрыша')
+    @app_commands.describe(
+        message_id="ID сообщения розыгрыша"
+    )
     async def giveaway_reroll(self, ctx, message_id: int):
         """Перевыбрать победителей розыгрыша"""
         # Проверка прав
@@ -271,7 +280,10 @@ class Giveaway(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Ошибка перевыбора: {e}")
 
-    @commands.command(name='gend')
+    @commands.hybrid_command(name='gend', description='Досрочно завершить розыгрыш')
+    @app_commands.describe(
+        message_id="ID сообщения розыгрыша"
+    )
     async def giveaway_end(self, ctx, message_id: int):
         """Досрочно завершить розыгрыш"""
         # Проверка прав
@@ -306,7 +318,7 @@ class Giveaway(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Ошибка завершения: {e}")
 
-    @commands.command(name='glist')
+    @commands.hybrid_command(name='glist', description='Показать активные розыгрыши')
     async def giveaway_list(self, ctx):
         """Показать активные розыгрыши"""
         # Эта команда доступна всем
