@@ -2,12 +2,14 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
-from dotenv import load_dotenv
 from utils.database import Database
 import asyncio
+import time  # <-- добавили для задержки
 from utils.setup_achievements import setup_default_achievements, add_default_banner_to_users
 
-load_dotenv()
+# ----- ДОБАВЛЯЕМ ВЕБ-СЕРВЕР ДЛЯ RENDER -----
+from keep_alive import keep_alive
+# --------------------------------------------
 
 db = Database()
 
@@ -152,6 +154,8 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 if __name__ == "__main__":
     try:
         print("🚀 Запуск бота...")
+        keep_alive()                 # <-- запускаем веб-сервер
+        time.sleep(1)                # <-- даём ему время подняться
         bot.run(os.getenv('DISCORD_TOKEN'))
     except Exception as e:
         print(f"❌ Критическая ошибка: {e}")
